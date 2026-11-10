@@ -74,13 +74,17 @@ def merge_with_gdp_population(suicide_df):
     # Clean column names
     gdp_df.columns = [c.strip().lower().replace(' ', '_') for c in gdp_df.columns]
     # Clean country names for both
+    suicide_df = suicide_df.copy()
+    if 'sex' in suicide_df.columns:
+        # Avoid counting male, female and both-sex rows as independent country-years.
+        suicide_df = suicide_df[suicide_df['sex'].astype(str).str.strip().str.lower() == 'both sexes']
     suicide_df['country'] = suicide_df['country'].str.strip().str.lower()
     gdp_df['country'] = gdp_df['country'].str.strip().str.lower()
     # Ensure year is int
     suicide_df['year'] = suicide_df['year'].astype(int)
     gdp_df['year'] = gdp_df['year'].astype(int)
     # Merge
-    merged = pd.merge(suicide_df, gdp_df, on=['country', 'year'], how='left')
+    merged = pd.merge(suicide_df, gdp_df, on=['country', 'year'], how='left', validate='many_to_one')
     if merged[['gdp_per_capita', 'population']].isnull().all(axis=None):
         print('Merge failed: No GDP/Population data matched. Check country/year alignment.')
     return merged
@@ -101,10 +105,11 @@ def clean_data(df):
     if not year_col or not rate_col:
         raise ValueError(f"Could not find 'year' or 'suicide_rate' columns in columns: {df.columns.tolist()}")
     # Handle missing values
-    df = df.dropna(subset=[year_col, rate_col])
+    df = df.dropna(subset=[year_col, rate_col]).copy()
     # Convert year to int
     df[year_col] = df[year_col].astype(int)
     df[rate_col] = pd.to_numeric(df[rate_col], errors='coerce')
+    df = df.dropna(subset=[rate_col])
     # Rename to standard
     df = df.rename(columns={year_col: 'year', rate_col: 'suicide_rate'})
     return df
@@ -132,14 +137,14 @@ def plot_suicide_trends(df):
     # Plot by gender
     if sexes is not None and len(sexes) > 0:
         ax = axes[0]
-        color_map = cm.get_cmap('Set1', len(sexes))
+        color_map = plt.get_cmap('Set1', len(sexes))
         for i, sex in enumerate(sexes):
             sub = df[df['sex'] == sex]
             if sub.empty:
                 continue
             sub_grouped = sub.groupby('year')['suicide_rate'].mean()
             ax.plot(sub_grouped.index, sub_grouped.values, marker='o', label=str(sex), color=color_map(i))
-        ax.set_title('Suicide Rates by Gender (Global Average)', fontsize=18)
+        ax.set_title('Suicide Rates by Gender (Unweighted Country Average)', fontsize=18)
         ax.set_xlabel('Year', fontsize=15)
         ax.set_ylabel('Suicide Rate', fontsize=15)
         ax.legend(title='Gender', fontsize=12)
@@ -149,7 +154,7 @@ def plot_suicide_trends(df):
     # Plot by top 3 countries
     if top_countries:
         ax = axes[1]
-        color_map = cm.get_cmap('tab10', len(top_countries))
+        color_map = plt.get_cmap('tab10', len(top_countries))
         for i, country in enumerate(top_countries):
             sub = df[df['country'] == country]
             if sub.empty:
@@ -207,15 +212,15 @@ def plot_correlation_heatmap(df):
 
 
 # --- FORECASTING ---
-def plot_forecast(df):
+def plot_trend(df):
     """
-    Enhanced forecast plot with markers, grid, and highlighted regression line.
+    Descriptive in-sample trend; this is not an out-of-sample forecast.
     """
     import matplotlib.cm as cm
     # Aggregate by year
     yearly = df.groupby('year')['suicide_rate'].mean().reset_index()
     if yearly.empty:
-        print('No data for forecast plot.')
+        print('No data for descriptive trend plot.')
         return
     # Moving average
     yearly['ma'] = yearly['suicide_rate'].rolling(window=3, min_periods=1).mean()
@@ -228,16 +233,16 @@ def plot_forecast(df):
     plt.figure(figsize=(11, 7), dpi=220)
     plt.plot(yearly['year'], yearly['suicide_rate'], marker='o', label='Actual', color='tab:blue', linewidth=2)
     plt.plot(yearly['year'], yearly['ma'], marker='s', label='Moving Avg (3yr)', color='tab:orange', linestyle='--', linewidth=2)
-    plt.plot(yearly['year'], yearly['regression'], label='Linear Regression', color='tab:red', linewidth=3, linestyle='-')
-    plt.title('Forecast of Suicide Rates (Global Average)', fontsize=18)
+    plt.plot(yearly['year'], yearly['regression'], label='In-sample linear fit', color='tab:red', linewidth=3, linestyle='-')
+    plt.title('Suicide Rates (Unweighted Country Average, Descriptive)', fontsize=18)
     plt.xlabel('Year', fontsize=15)
-    plt.ylabel('Suicide Rate', fontsize=15)
+    plt.ylabel('Crude rate per 100,000', fontsize=15)
     plt.legend(fontsize=13)
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.xticks(fontsize=12)
     plt.yticks(fontsize=12)
     plt.tight_layout()
-    plt.savefig(os.path.join(VIS_DIR, 'forecast_plot.png'), dpi=220)
+    plt.savefig(os.path.join(VIS_DIR, 'trend_plot.png'), dpi=220)
     plt.close()
 
 
@@ -249,7 +254,7 @@ def main():
     merged_df = merge_with_gdp_population(df)
     plot_suicide_trends(df)
     plot_correlation_heatmap(merged_df)
-    plot_forecast(df)
+    plot_trend(df)
     print("All plots generated in 'visualization/' directory.")
 
 

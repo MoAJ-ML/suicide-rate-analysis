@@ -1,2 +1,4 @@
 /archive (2)
 /archive (2).zip
+__pycache__/
+.pytest_cache/
