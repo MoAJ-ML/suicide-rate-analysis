@@ -220,7 +220,7 @@ def plot_trend(df):
     # Aggregate by year
     yearly = df.groupby('year')['suicide_rate'].mean().reset_index()
     if yearly.empty:
-        print('No data for forecast plot.')
+        print('No data for descriptive trend plot.')
         return
     # Moving average
     yearly['ma'] = yearly['suicide_rate'].rolling(window=3, min_periods=1).mean()
